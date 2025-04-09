@@ -1,0 +1,10 @@
+What is 2 + 2?;9;4;5
+What is the capital of France?;10;4;6
+What color is the sky?;10;5;5
+How many legs does a cat have?;9;4;5
+What is the opposite of hot?;11;4;7
+What is 10 divided by 2?;9;4;5
+What is the first letter of the alphabet?;10;5;5
+Which planet is known as the Red Planet?;10;4;6
+What do bees make?;10;4;6
+What is the capital of Japan?;12;4;8
