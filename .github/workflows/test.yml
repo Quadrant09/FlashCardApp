@@ -18,19 +18,19 @@ jobs:
         cache: 'maven'
 
     - name: Verify POM.xml exists
-      run: ls -la Java  # Check if POM.xml exists
+      run: ls -la demo  # Make sure pom.xml is visible
 
     - name: Build with Maven
-      working-directory: Java
-      run: mvn clean install -B  
-      continue-on-error: false  # Stops workflow if build fails
+      working-directory: demo
+      run: mvn clean install -B
 
     - name: Run tests with Maven (Debug Mode)
-      working-directory: Java
-      run: mvn test -e -X  # Enables detailed error logs
+      working-directory: demo
+      run: mvn test -e -X
 
     - name: Upload Surefire Reports
       uses: actions/upload-artifact@v4
       with:
         name: surefire-reports
-        path: Java/target/surefire-reports
+        path: demo/target/surefire-reports
+
