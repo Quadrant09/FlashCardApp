@@ -2,12 +2,14 @@ package com.example;
 import java.util.*;
 import java.io.*;
 //java -cp out com.example.FlashCardApp flashcards.txt --order random
-
+//javac -d out src/main/java/com/example/*.java
 
 
 // CLI Flashcard Application
 public class FlashCardApp {
     private static final String LOG_FILE = "flashcard_log.txt";
+    private static int sessionCounter = 0;
+    private static int mistakeCounter = 0;
 
     public static void main(String[] args) {
         if (args.length == 0 || args[0].equals("--help")) {
@@ -43,15 +45,18 @@ public class FlashCardApp {
             }
         }
 
+        Map<String, PerformanceData> logData = loadLog();
+        sessionCounter++;
+        mistakeCounter = 0;
+        System.out.println("[DEBUG] Starting session #" + sessionCounter);
+
         List<FlashCard> cards = loadCards(fileName);
         if (cards.isEmpty()) {
             System.out.println("No cards loaded. Check your file.");
             return;
         }
 
-        Map<String, PerformanceData> logData = loadLog();
         mergeLogIntoCards(cards, logData);
-
         for (FlashCard card : cards) {
             card.resetSessionProgress();
         }
@@ -67,32 +72,30 @@ public class FlashCardApp {
         pool = sorter.organize(pool);
 
         Scanner scanner = new Scanner(System.in);
-        long sessionStart = System.currentTimeMillis();
-
         for (FlashCard current : pool) {
             System.out.println("Question: " + (invertCards ? current.getAnswer() : current.getQuestion()));
             String userAnswer = scanner.nextLine();
+
             if (userAnswer.equalsIgnoreCase("exit")) {
                 System.out.println("Session exited by user.");
                 break;
             }
+
             current.incrementAttempts();
             String correctAnswer = invertCards ? current.getQuestion() : current.getAnswer();
+
             if (!userAnswer.equalsIgnoreCase(correctAnswer)) {
-                current.incrementMistakes();
+                mistakeCounter++;
+                current.recordMistake(sessionCounter, mistakeCounter);
                 System.out.println("Incorrect!");
             } else {
-                current.incrementCorrectAnswers();
-                current.incrementSessionCorrect();
+                current.incrementCorrectAnswers(sessionCounter);
                 System.out.println("Correct! (" + current.getSessionCorrect() + "/" + repetitions + ")");
             }
         }
-
-        long sessionEnd = System.currentTimeMillis();
-        double avgTime = (sessionEnd - sessionStart) / 1000.0 / pool.size();
         scanner.close();
 
-        evaluateAchievements(cards, avgTime);
+        evaluateAchievements(cards);
         printFlashCardLog(cards);
         writeLog(cards);
     }
@@ -100,11 +103,11 @@ public class FlashCardApp {
     private static void printHelp() {
         System.out.println("Usage: flashcard <cards-file> [options]");
         System.out.println("Options:");
-        System.out.println("  --help Тусламжийн мэдээлэл харуулах");
-        System.out.println("  --order <order> Зохион байгуулалтын төрөл, default нь \"random\"");
-        System.out.println("      [сонголт: \"random\", \"worst-first\", \"recent-mistakes-first\"]");
-        System.out.println("  --repetitions <num> Нэг картыг хэдэн удаа асууна (тахирлах)");
-        System.out.println("  --invertCards Тохиргоо идэвхэжсэн бол картын асуулт, хариултыг сольж харуулна.");
+        System.out.println("  --help                 Тусламжийн мэдээлэл харуулах");
+        System.out.println("  --order <order>        Зохион байгуулалтын төрөл, default нь \"random\"");
+        System.out.println("                         [сонголт: \"random\", \"worst-first\", \"recent-mistakes-first\"]");
+        System.out.println("  --repetitions <num>    Нэг картыг хэдэн удаа асууна (тахирлах).");
+        System.out.println("  --invertCards          Тохиргоо идэвхэжсэн бол картын асуулт, хариултыг сольж харуулна.");
     }
 
     private static List<FlashCard> loadCards(String filename) {
@@ -125,13 +128,16 @@ public class FlashCardApp {
 
     private static CardOrganizer getSorter(String order) {
         switch (order) {
-            case "worst-first": return new WorstFirstSorter();
-            case "recent-mistakes-first": return new RecentMistakesFirstSorter();
-            default: return new RandomSorter();
+            case "worst-first": 
+                return new WorstFirstSorter();
+            case "recent-mistakes-first":
+                return new RecentMistakesFirstSorter();
+            default:
+                return new RandomSorter();
         }
     }
 
-    private static void evaluateAchievements(List<FlashCard> cards, double avgTime) {
+    private static void evaluateAchievements(List<FlashCard> cards) {
         boolean allCorrect = true;
         boolean repeatAchieved = false;
         boolean confidentAchieved = false;
@@ -145,7 +151,6 @@ public class FlashCardApp {
         if (allCorrect) System.out.println("✔ CORRECT: All cards answered correctly in the last round!");
         if (repeatAchieved) System.out.println("✔ REPEAT: A card was attempted more than 5 times!");
         if (confidentAchieved) System.out.println("✔ CONFIDENT: A card was answered correctly at least 3 times!");
-        if (avgTime < 5.0) System.out.println("✔ SPEEDSTER: Average response time under 5 seconds!");
     }
 
     private static void printFlashCardLog(List<FlashCard> cards) {
@@ -165,10 +170,16 @@ public class FlashCardApp {
         int attempts;
         int mistakes;
         int correctAnswers;
-        public PerformanceData(int attempts, int mistakes, int correctAnswers) {
+        int lastSessionWithMistake;
+        int lastMistakeOrderInSession;
+
+        public PerformanceData(int attempts, int mistakes, int correctAnswers,
+                               int lastSessionWithMistake, int lastMistakeOrderInSession) {
             this.attempts = attempts;
             this.mistakes = mistakes;
             this.correctAnswers = correctAnswers;
+            this.lastSessionWithMistake = lastSessionWithMistake;
+            this.lastMistakeOrderInSession = lastMistakeOrderInSession;
         }
     }
 
@@ -176,17 +187,20 @@ public class FlashCardApp {
         Map<String, PerformanceData> map = new HashMap<>();
         File logFile = new File(LOG_FILE);
         if (!logFile.exists()) return map;
+
         try (BufferedReader reader = new BufferedReader(new FileReader(logFile))) {
+            String firstLine = reader.readLine();
+            if (firstLine != null && firstLine.startsWith("SESSION_COUNTER;")) {
+                String[] sessionParts = firstLine.split(";");
+                if (sessionParts.length >= 2) {
+                    sessionCounter = Integer.parseInt(sessionParts[1].trim());
+                }
+            } else if (firstLine != null) {
+                processFlashcardLine(firstLine, map);
+            }
             String line;
             while ((line = reader.readLine()) != null) {
-                String[] parts = line.split(";");
-                if (parts.length == 4) {
-                    String question = parts[0].trim();
-                    int attempts = Integer.parseInt(parts[1].trim());
-                    int mistakes = Integer.parseInt(parts[2].trim());
-                    int correctAnswers = Integer.parseInt(parts[3].trim());
-                    map.put(question, new PerformanceData(attempts, mistakes, correctAnswers));
-                }
+                processFlashcardLine(line, map);
             }
         } catch (IOException e) {
             System.out.println("Error reading log file: " + e.getMessage());
@@ -194,20 +208,36 @@ public class FlashCardApp {
         return map;
     }
 
+    private static void processFlashcardLine(String line, Map<String, PerformanceData> map) {
+        String[] parts = line.split(";");
+        if (parts.length == 6) {
+            String question = parts[0].trim();
+            int attempts = Integer.parseInt(parts[1].trim());
+            int mistakes = Integer.parseInt(parts[2].trim());
+            int correctAnswers = Integer.parseInt(parts[3].trim());
+            int lastSession = Integer.parseInt(parts[4].trim());
+            int lastOrder = Integer.parseInt(parts[5].trim());
+            map.put(question, new PerformanceData(attempts, mistakes, correctAnswers, lastSession, lastOrder));
+        }
+    }
+
     private static void mergeLogIntoCards(List<FlashCard> cards, Map<String, PerformanceData> logData) {
         for (FlashCard card : cards) {
             if (logData.containsKey(card.getQuestion())) {
                 PerformanceData pd = logData.get(card.getQuestion());
-                card.updateFromLog(pd.attempts, pd.mistakes, pd.correctAnswers);
+                card.updateFromLog(pd.attempts, pd.mistakes, pd.correctAnswers, pd.lastSessionWithMistake);
+                card.recordMistake(pd.lastSessionWithMistake, pd.lastMistakeOrderInSession);
             }
         }
     }
 
     private static void writeLog(List<FlashCard> cards) {
         try (PrintWriter writer = new PrintWriter(new FileWriter(LOG_FILE))) {
+            writer.println("SESSION_COUNTER;" + sessionCounter);
             for (FlashCard card : cards) {
                 writer.println(card.getQuestion() + ";" + card.getAttempts() + ";" +
-                        card.getMistakes() + ";" + card.getCorrectAnswers());
+                        card.getMistakes() + ";" + card.getCorrectAnswers() + ";" +
+                        card.getLastSessionWithMistake() + ";" + card.getMistakeOrderInLastSession());
             }
         } catch (IOException e) {
             System.out.println("Error writing log file: " + e.getMessage());
