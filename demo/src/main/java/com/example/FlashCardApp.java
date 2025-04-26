@@ -148,9 +148,9 @@ public class FlashCardApp {
             if (card.getCorrectAnswers() >= 3) confidentAchieved = true;
         }
         System.out.println("\nAchievements:");
-        if (allCorrect) System.out.println("✔ CORRECT: All cards answered correctly in the last round!");
-        if (repeatAchieved) System.out.println("✔ REPEAT: A card was attempted more than 5 times!");
-        if (confidentAchieved) System.out.println("✔ CONFIDENT: A card was answered correctly at least 3 times!");
+        if (allCorrect) System.out.println(" CORRECT: All cards answered correctly in the last round!");
+        if (repeatAchieved) System.out.println("REPEAT: A card was attempted more than 5 times!");
+        if (confidentAchieved) System.out.println("CONFIDENT: A card was answered correctly at least 3 times!");
     }
 
     private static void printFlashCardLog(List<FlashCard> cards) {

@@ -6,7 +6,7 @@ class RecentMistakesFirstSorter implements CardOrganizer {
     @Override
     public List<FlashCard> organize(List<FlashCard> cards) {
         // DEBUG: Show sorting inputs
-        System.out.println("🔍 Sorting by recent mistakes:");
+        System.out.println("Sorting by recent mistakes:");
         for (FlashCard card : cards) {
             System.out.println("  " + card.getQuestion() +
                 " | Session: " + card.getLastSessionWithMistake() +
